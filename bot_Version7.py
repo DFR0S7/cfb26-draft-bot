@@ -379,7 +379,9 @@ async def start_draft(interaction: discord.Interaction, participants: str):
         ephemeral=False
     )
 
-@bot.tree.command(name="claim", description="Claim (declare) your preassigned team during the initial round. This is an extra pick and does not count against your team picks.")
+@bot.tree.command(
+    name="claim",
+    description="Claim your preassigned team (extra pick). Does not count toward team picks.")
 @app_commands.describe(team_name="Exact team name (case-insensitive). Use /list_available to see options.")
 async def claim(interaction: discord.Interaction, team_name: str):
     draft = await get_active_draft(interaction.guild_id)
@@ -663,7 +665,7 @@ async def conference_view(interaction: discord.Interaction, conference: str):
     else:
         await interaction.response.send_message(f"Conference '{conf_key}' for draft {draft_id}:\n{out}", ephemeral=False)
 
-@bot.tree.command(name="list_conferences", description="Show current conferences and slot usage (max 2 users per conference) for the active or most-recent draft.")
+@bot.tree.command(name="list_conferences", description="Show conferences and slot usage (max 2 users per conference).")
 async def list_conferences(interaction: discord.Interaction):
     draft = await get_current_or_latest_draft(interaction.guild_id)
     if not draft:
