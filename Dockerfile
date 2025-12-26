@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.11-slim
 
 # Install sqlite3 for local debugging and any build deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
