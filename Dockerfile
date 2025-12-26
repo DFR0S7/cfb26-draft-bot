@@ -20,4 +20,4 @@ COPY . .
 ENV DB_PATH=/data/draft.db
 
 # Run the bot
-CMD ["python", "bot.py"]
+CMD ["python", "bot_Version7.py"]
