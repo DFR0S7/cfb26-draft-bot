@@ -1,24 +1,39 @@
-FROM python:3.11-slim
+# name=Dockerfile
+FROM python:3.11
 
-# Install sqlite3 for local debugging and any build deps
+# Install system packages we may need
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
-    gcc \
+    build-essential \
     libpython3.11-dev \
-    libpq-dev \
+    libsndfile1 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python deps
+# Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# Diagnostic check to print python info and test audioop availability
+RUN python - <<'PY'
+import sys, importlib
+print("PYTHON:", sys.executable, sys.version)
+print("_audioop in builtin modules:", '_audioop' in sys.builtin_module_names)
+try:
+    import audioop
+    print("audioop import: OK ->", audioop)
+except Exception as e:
+    print("audioop import: FAILED ->", type(e).__name__, e)
+# also print available names containing 'audio' to help debugging
+print("some builtin names snippet:", [n for n in sys.builtin_module_names if 'audio' in n.lower()][:20])
+PY
+
+# Copy app
 COPY . .
 
-# Default DB path for SQLite (will be overridden by environment variable if provided)
+# Default DB path (can be overridden by env)
 ENV DB_PATH=/data/draft.db
 
-# Run the bot
-CMD ["python", "bot_Version7.py"]
+# Start bot
+CMD ["python", "-u", "bot_Version7.py"]
