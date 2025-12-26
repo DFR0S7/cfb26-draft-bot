@@ -1,7 +1,7 @@
-# name=Dockerfile
+# Use official full CPython image (includes compiled C extensions)
 FROM python:3.11
 
-# Install system packages we may need (sqlite for debugging, build tools)
+# Optional system packages (sqlite + build tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     build-essential \
@@ -30,8 +30,8 @@ PY
 # Copy application code
 COPY . .
 
-# Default DB path (can be overridden by env var on Render)
+# Default DB path (override via env in Render)
 ENV DB_PATH=/data/draft.db
 
-# Use the exact filename you have in the repo
+# Start your bot (update filename if needed)
 CMD ["python", "-u", "bot_Version7.py"]
