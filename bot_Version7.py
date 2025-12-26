@@ -39,9 +39,10 @@ DB_PATH = "draft.db"
 TEAMS_JSON = "teams.json"
 
 intents = discord.Intents.default()
-intents.message_content = False
-
+intents.members = True
+intents.guilds = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+intents.message_content = False
 
 # Load teams list: teams.json must be an array of team name strings
 with open(TEAMS_JSON, "r", encoding="utf-8") as f:
