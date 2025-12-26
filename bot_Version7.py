@@ -63,10 +63,37 @@ ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0"))
 DB_PATH = "draft.db"
 TEAMS_JSON = "teams.json"
 
-intents = discord.Intents.default()
-intents.message_content = False
+# --- SAFETY CHECK: Must be used inside a server ---
+if interaction.guild is None:
+    await interaction.response.send_message(
+        "This command must be used inside a server channel, not in DMs.",
+        ephemeral=True
+    )
+    return
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+# --- SAFETY CHECK: Ensure bot has member intent ---
+if not interaction.client.intents.members:
+    await interaction.response.send_message(
+        "Bot is missing the 'Server Members Intent'. Please enable it in the Discord Developer Portal.",
+        ephemeral=True
+    )
+    return
+
+# --- Fetch the first user in the draft order ---
+first_member = interaction.guild.get_member(first_user_id)
+
+# If Discord didn't send member data (rare but possible)
+if first_member is None:
+    try:
+        # Try a direct API fetch as fallback
+        first_member = await interaction.guild.fetch_member(first_user_id)
+    except Exception:
+        await interaction.response.send_message(
+            f"Could not find the first participant in this server (User ID: {first_user_id}). "
+            "Make sure they are in the server.",
+            ephemeral=True
+        )
+        return
 
 # Load teams list: teams.json must be an array of team name strings
 with open(TEAMS_JSON, "r", encoding="utf-8") as f:
