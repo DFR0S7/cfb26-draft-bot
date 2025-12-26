@@ -89,7 +89,7 @@ if first_member is None:
         first_member = await interaction.guild.fetch_member(first_user_id)
     except Exception:
         await interaction.response.send_message(
-            f"Could not find the first participant in this server (User ID: {first_user_id}). "
+            if"Could not find the first participant in this server (User ID: {first_user_id}). "
             "Make sure they are in the server.",
             ephemeral=True
         )
