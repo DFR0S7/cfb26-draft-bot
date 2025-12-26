@@ -26,6 +26,31 @@ import io
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
 
+# Minimal HTTP health endpoint so Render web service sees an open port.
+# Place this near the top of bot_Version7.py (after imports), before bot.run(...)
+import os
+import threading
+from http.server import SimpleHTTPRequestHandler
+from socketserver import TCPServer
+
+def _start_health_server():
+    try:
+        port = int(os.getenv("PORT", "8080"))
+        # bind to 0.0.0.0 so Render can reach it
+        class QuietHandler(SimpleHTTPRequestHandler):
+            def log_message(self, format, *args):
+                return
+        # Use allow_reuse_address to avoid bind issues on quick restarts
+        TCPServer.allow_reuse_address = True
+        with TCPServer(("0.0.0.0", port), QuietHandler) as httpd:
+            httpd.serve_forever()
+    except Exception:
+        # If anything goes wrong, don't crash the bot — just continue without health server
+        pass
+
+# start daemon thread so it doesn't block the main process
+threading.Thread(target=_start_health_server, daemon=True).start()
+
 import discord
 from discord import app_commands
 from discord.ext import commands
