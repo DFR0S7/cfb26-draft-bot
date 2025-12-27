@@ -188,4 +188,4 @@ def start_health_server():
         print(f"Health server running on port {port}")
         httpd.serve_forever()
     except Exception as e:
-        print(f"
+        print(f"Health server failed to start: {e}")
