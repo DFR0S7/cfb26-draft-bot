@@ -1,4 +1,4 @@
-[
+{"teams": [
   { "school": "Air Force", "conference": null },
   { "school": "Akron", "conference": null },
   { "school": "Alabama", "conference": null },
@@ -132,9 +132,9 @@
   { "school": "Western Michigan", "conference": null },
   { "school": "Wisconsin", "conference": null },
   { "school": "Wyoming", "conference": null }
-]
+],
 
- [ {"conferences":
+ "conferences":[
     "SEC",
     "Big Ten",
     "Big 12",
@@ -146,4 +146,5 @@
     "MAC",
     "Conference USA",
     "Independents"
-}]
+]
+}
