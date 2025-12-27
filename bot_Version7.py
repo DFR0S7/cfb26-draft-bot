@@ -118,7 +118,146 @@ def get_all_conferences():
 # DB: Create a new draft
 # -----------------------------
 async def create_draft():
-    conn = get
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO drafts (status, current_pick_index) VALUES (?, ?)", ("open", 0))
+    conn.commit()
+    draft_id = cur.lastrowid
+    conn.close()
+    return draft_id
+
+# -----------------------------
+# DB: Get active draft
+# -----------------------------
+async def get_active_draft():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM drafts WHERE status = 'open' ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+# -----------------------------
+# DB: Add participant
+# -----------------------------
+async def add_participant(draft_id, user_id, pick_order):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR IGNORE INTO participants (draft_id, user_id, pick_order)
+        VALUES (?, ?, ?)
+    """, (draft_id, user_id, pick_order))
+    conn.commit()
+    conn.close()
+
+# -----------------------------
+# DB: Get participants ordered
+# -----------------------------
+async def get_participants(draft_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT user_id, pick_order
+        FROM participants
+        WHERE draft_id = ?
+        ORDER BY pick_order ASC
+    """, (draft_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+# -----------------------------
+# DB: Get participant by pick #
+# -----------------------------
+async def get_participant_by_pick(draft_id, pick_index):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT user_id
+        FROM participants
+        WHERE draft_id = ? AND pick_order = ?
+    """, (draft_id, pick_index))
+    row = cur.fetchone()
+    conn.close()
+    return row["user_id"] if row else None
+
+# -----------------------------
+# DB: Assign team to user
+# -----------------------------
+async def assign_team(draft_id, user_id, team_name, conference):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO assigned_teams (draft_id, user_id, team_name, conference)
+        VALUES (?, ?, ?, ?)
+    """, (draft_id, user_id, team_name, conference))
+    conn.commit()
+    conn.close()
+
+# -----------------------------
+# DB: Check if team already taken
+# -----------------------------
+async def is_team_taken(draft_id, team_name):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 1 FROM assigned_teams
+        WHERE draft_id = ? AND team_name = ?
+    """, (draft_id, team_name))
+    row = cur.fetchone()
+    conn.close()
+    return row is not None
+
+# -----------------------------
+# DB: Advance pick index
+# -----------------------------
+async def advance_pick(draft_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE drafts
+        SET current_pick_index = current_pick_index + 1
+        WHERE id = ?
+    """, (draft_id,))
+    conn.commit()
+    conn.close()
+
+# -----------------------------
+# Safety: Ensure command is in a guild
+# -----------------------------
+async def ensure_guild(interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command must be used inside a server channel.",
+            ephemeral=True
+        )
+        return False
+    return True
+
+# -----------------------------
+# Safety: Ensure bot has member intent
+# -----------------------------
+async def ensure_member_intent(interaction):
+    if not interaction.client.intents.members:
+        await interaction.response.send_message(
+            "Bot is missing the **Server Members Intent**. "
+            "Enable it in the Discord Developer Portal.",
+            ephemeral=True
+        )
+        return False
+    return True
+
+# -----------------------------
+# Safety: Fetch member safely
+# -----------------------------
+async def safe_fetch_member(guild, user_id):
+    member = guild.get_member(user_id)
+    if member:
+        return member
+    try:
+        return await guild.fetch_member(user_id)
+    except Exception:
+        return None
 # ============================================================
 # SECTION 3 — Slash Commands
 # ============================================================
