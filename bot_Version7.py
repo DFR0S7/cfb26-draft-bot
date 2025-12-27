@@ -80,14 +80,11 @@ init_db()
 TEAMS_JSON = "teams.json"
 
 try:
-    with open(TEAMS_JSON, "r", encoding="utf-8") as f:
-        TEAMS = json.load(f)
-except Exception as e:
-    print(f"Error loading teams.json: {e}")
-    TEAMS = []
-data = json.load(f)
-TEAMS = data["teams"]
-CONFERENCES = data["conferences"]
+with open("teams.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+TEAMS = data["teams"]          # list of team objects
+CONFERENCES = data["conferences"]  # list of valid conferences
 # ============================================================
 # SECTION 2 — Helper Functions
 # ============================================================
