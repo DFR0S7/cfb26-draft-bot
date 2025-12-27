@@ -304,7 +304,34 @@ async def start_draft(interaction: discord.Interaction):
 
 # ------------------------------------------------------------
 # /join_draft — Users
-# ============================================================
+#
+------------------------------------------------------------
+@bot.tree.command(name="join_draft", description="Join the currently open draft.")
+async def join_draft(interaction: discord.Interaction):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft to join.",
+            ephemeral=True
+        )
+        return
+
+    draft_id = draft["id"]
+
+    # Determine next pick order
+    participants = await get_participants(draft_id)
+    next_pick = len(participants)
+
+    await add_participant(draft_id, interaction.user.id, next_pick)
+
+    await interaction.response.send_message(
+        f"You have joined Draft #{draft_id} with pick order **{next_pick + 1}**.",
+        ephemeral=True
+    ) ============================================================
 # SECTION 4 — Health Server + Bot Runner
 # ============================================================
 
