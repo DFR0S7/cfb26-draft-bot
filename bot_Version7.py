@@ -330,7 +330,8 @@ async def join_draft(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"You have joined Draft #{draft_id} with pick order **{next_pick + 1}**.",
         ephemeral=True
-    ) ============================================================
+    ) 
+#============================================================
 # SECTION 4 — Health Server + Bot Runner
 # ============================================================
 
