@@ -85,6 +85,9 @@ try:
 except Exception as e:
     print(f"Error loading teams.json: {e}")
     TEAMS = []
+data = json.load(f)
+TEAMS = data["teams"]
+CONFERENCES = data["conferences"]
 # ============================================================
 # SECTION 2 — Helper Functions
 # ============================================================
