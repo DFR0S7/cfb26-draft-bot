@@ -332,12 +332,171 @@ async def join_draft(interaction: discord.Interaction):
         ephemeral=True
     ) 
 #============================================================
-# SECTION 4 — Health Server + Bot Runner
-# ============================================================
+#------------------------------------------------------------
+# /choose_conference — User selects a conference
+#------------------------------------------------------------
+@bot.tree.command(name="choose_conference", description="Choose a conference to draft from.")
+@app_commands.describe(conference="The conference you want to draft from.")
+async def choose_conference(interaction: discord.Interaction, conference: str):
 
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft.",
+            ephemeral=True
+        )
+        return
+
+    conferences = get_all_conferences()
+    if conference not in conferences:
+        await interaction.response.send_message(
+            "Invalid conference. Use `/conference_view` to see available options.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        f"You selected **{conference}**.\n"
+        "Now use `/claim_team` to pick a team from that conference.",
+        ephemeral=True
+    )
+#------------------------------------------------------------
+# /conference_view — Show all conferences
+#------------------------------------------------------------
+@bot.tree.command(name="conference_view", description="View all conferences.")
+async def conference_view(interaction: discord.Interaction):
+
+    if not await ensure_guild(interaction):
+        return
+
+    conferences = get_all_conferences()
+    formatted = "\n".join(f"- {c}" for c in conferences)
+
+    await interaction.response.send_message(
+        f"**Available Conferences:**\n{formatted}",
+        ephemeral=True
+    )
 # ------------------------------------------------------------
+# /claim_team — User claims a team from a conference
+#------------------------------------------------------------
+@bot.tree.command(name="claim_team", description="Claim a team from a chosen conference.")
+@app_commands.describe(team_name="The team you want to claim.")
+async def claim_team(interaction: discord.Interaction, team_name: str):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft.",
+            ephemeral=True
+        )
+        return
+
+    draft_id = draft["id"]
+
+    # Validate team
+    team = find_team(team_name)
+    if not team:
+        await interaction.response.send_message(
+            "Team not found. Check your spelling or use `/conference_view`.",
+            ephemeral=True
+        )
+        return
+
+    # Check if taken
+    if await is_team_taken(draft_id, team["school"]):
+        await interaction.response.send_message(
+            f"**{team['school']}** is already taken.",
+            ephemeral=True
+        )
+        return
+
+    # Assign team
+    await assign_team(
+        draft_id,
+        interaction.user.id,
+        team["school"],
+        team["conference"]
+    )
+
+    await interaction.response.send_message(
+        f"You have successfully claimed **{team['school']}** ({team['conference']}).",
+        ephemeral=False
+    )
+#------------------------------------------------------------
+# /pick — User makes their draft pick
+#------------------------------------------------------------
+@bot.tree.command(name="pick", description="Make your draft pick.")
+@app_commands.describe(team_name="The team you want to pick.")
+async def pick(interaction: discord.Interaction, team_name: str):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft.",
+            ephemeral=True
+        )
+        return
+
+    draft_id = draft["id"]
+    current_index = draft["current_pick_index"]
+
+    # Check if it's the user's turn
+    expected_user_id = await get_participant_by_pick(draft_id, current_index)
+    if expected_user_id != interaction.user.id:
+        await interaction.response.send_message(
+            "It is **not your turn** to pick.",
+            ephemeral=True
+        )
+        return
+
+    # Validate team
+    team = find_team(team_name)
+    if not team:
+        await interaction.response.send_message(
+            "Team not found.",
+            ephemeral=True
+        )
+        return
+
+    # Check if taken
+    if await is_team_taken(draft_id, team["school"]):
+        await interaction.response.send_message(
+            f"**{team['school']}** is already taken.",
+            ephemeral=True
+        )
+        return
+
+    # Assign team
+    await assign_team(
+        draft_id,
+        interaction.user.id,
+        team["school"],
+        team["conference"]
+    )
+
+    # Advance pick
+    await advance_pick(draft_id)
+
+    await interaction.response.send_message(
+        f"**{interaction.user.display_name}** has selected **{team['school']}**!",
+        ephemeral=False
+    )
+#============================================================
+# SECTION 4 — Health Server + Bot Runner
+#============================================================
+
+#------------------------------------------------------------
 # Simple health check server for Render
-# ------------------------------------------------------------
+#------------------------------------------------------------
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
