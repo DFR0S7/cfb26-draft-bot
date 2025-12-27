@@ -304,8 +304,7 @@ async def start_draft(interaction: discord.Interaction):
 
 # ------------------------------------------------------------
 # /join_draft — Users
-#
-------------------------------------------------------------
+#------------------------------------------------------------
 @bot.tree.command(name="join_draft", description="Join the currently open draft.")
 async def join_draft(interaction: discord.Interaction):
 
