@@ -74,7 +74,16 @@ def init_db():
     conn.close()
 
 init_db()
+# Enforce pick limit per user
+    user_pick_count = await count_user_conference_picks(draft_id, conference_name, interaction.user.id)
 
+    if user_pick_count >= TEAMS_PER_USER:
+        await interaction.response.send_message(
+            f"You have already drafted your limit of **{TEAMS_PER_USER} teams** "
+            f"into **{conference_name}**.",
+            ephemeral=True
+        )
+        return
 # -----------------------------
 # Load Teams JSON
 # -----------------------------
@@ -221,6 +230,21 @@ async def advance_pick(draft_id):
     """, (draft_id,))
     conn.commit()
     conn.close()
+
+TEAMS_PER_USER = 7   # or whatever number U is
+async def count_user_conference_picks(draft_id, conference_name, user_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) AS count
+        FROM conference_picks
+        WHERE draft_id = ?
+          AND conference_name = ?
+          AND picked_by_user_id = ?
+    """, (draft_id, conference_name, user_id))
+    count = cur.fetchone()["count"]
+    conn.close()
+    return count
 
 # -----------------------------
 # Safety: Ensure command is in a guild
@@ -490,6 +514,397 @@ async def pick(interaction: discord.Interaction, team_name: str):
         f"**{interaction.user.display_name}** has selected **{team['school']}**!",
         ephemeral=False
     )
+# ------------------------------------------------------------
+# /assign_conference — User claims ownership of a conference
+# ------------------------------------------------------------
+@bot.tree.command(name="assign_conference", description="Claim ownership of a conference (max 2 owners).")
+@app_commands.describe(conference_name="The conference you want to own.")
+async def assign_conference(interaction: discord.Interaction, conference_name: str):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message("There is no active draft.", ephemeral=True)
+        return
+
+    draft_id = draft["id"]
+
+    # Check if user already owns a conference
+    owners = await get_conference_owners(draft_id, conference_name)
+    for owner in owners:
+        if owner["user_id"] == interaction.user.id:
+            await interaction.response.send_message(
+                f"You already own **{conference_name}**.",
+                ephemeral=True
+            )
+            return
+
+    # Attempt to assign
+    success = await assign_conference_owner(draft_id, conference_name, interaction.user.id)
+    if not success:
+        await interaction.response.send_message(
+            f"**{conference_name}** already has 2 owners.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        f"You are now an owner of **{conference_name}**!",
+        ephemeral=False
+    )
+
+
+# ------------------------------------------------------------
+# /draft_team_to_conference — Draft a team into your conference
+# ------------------------------------------------------------
+@bot.tree.command(name="draft_team_to_conference", description="Draft a team into the conference you own.")
+@app_commands.describe(conference_name="Your conference", team_name="Team you want to draft")
+async def draft_team_to_conference(interaction: discord.Interaction, conference_name: str, team_name: str):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message("There is no active draft.", ephemeral=True)
+        return
+
+    draft_id = draft["id"]
+
+    # Validate ownership
+    owners = await get_conference_owners(draft_id, conference_name)
+    owner_ids = [o["user_id"] for o in owners]
+
+    if interaction.user.id not in owner_ids:
+        await interaction.response.send_message(
+            f"You do not own **{conference_name}**.",
+            ephemeral=True
+        )
+        return
+
+    # Validate team exists
+    team = find_team(team_name)
+    if not team:
+        await interaction.response.send_message("Team not found.", ephemeral=True)
+        return
+
+    # Check if team already drafted
+    if await is_team_in_any_conference(draft_id, team["school"]):
+        await interaction.response.send_message(
+            f"**{team['school']}** has already been drafted into a conference.",
+            ephemeral=True
+        )
+        return
+
+    # Add team to conference
+    await add_team_to_conference(draft_id, conference_name, team["school"], interaction.user.id)
+
+    await interaction.response.send_message(
+        f"**{team['school']}** has been drafted into **{conference_name}**!",
+        ephemeral=False
+    )
+
+
+# ------------------------------------------------------------
+# /view_conference — Show owners + drafted teams + available teams
+# ------------------------------------------------------------
+@bot.tree.command(name="view_conference", description="View the current state of a custom conference.")
+@app_commands.describe(conference_name="The conference to view.")
+async def view_conference(interaction: discord.Interaction, conference_name: str):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message("There is no active draft.", ephemeral=True)
+        return
+
+    draft_id = draft["id"]
+
+    owners = await get_conference_owners(draft_id, conference_name)
+    teams = await get_conference_teams(draft_id, conference_name)
+
+    owner_lines = []
+    for o in owners:
+        member = await safe_fetch_member(interaction.guild, o["user_id"])
+        name = member.display_name if member else f"User {o['user_id']}"
+        owner_lines.append(f"- {name}")
+
+    team_lines = [f"{t['pick_number']}. {t['team_name']}" for t in teams]
+
+    if not owner_lines:
+        owner_text = "No owners yet."
+    else:
+        owner_text = "\n".join(owner_lines)
+
+    if not team_lines:
+        team_text = "No teams drafted yet."
+    else:
+        team_text = "\n".join(team_lines)
+
+    await interaction.response.send_message(
+        f"**Conference: {conference_name}**\n\n"
+        f"**Owners:**\n{owner_text}\n\n"
+        f"**Drafted Teams:**\n{team_text}",
+        ephemeral=False
+    )
+
+
+# ------------------------------------------------------------
+# /view_all_custom_conferences — Show everything
+# ------------------------------------------------------------
+@bot.tree.command(name="view_all_custom_conferences", description="View all custom conferences and their drafted teams.")
+async def view_all_custom_conferences(interaction: discord.Interaction):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message("There is no active draft.", ephemeral=True)
+        return
+
+    draft_id = draft["id"]
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT conference_name
+        FROM conference_assignments
+        WHERE draft_id = ?
+    """, (draft_id,))
+    conferences = [row["conference_name"] for row in cur.fetchall()]
+    conn.close()
+
+    if not conferences:
+        await interaction.response.send_message("No conferences have been claimed yet.", ephemeral=True)
+        return
+
+    output = []
+
+    for conf in conferences:
+        owners = await get_conference_owners(draft_id, conf)
+        teams = await get_conference_teams(draft_id, conf)
+
+        owner_names = []
+        for o in owners:
+            member = await safe_fetch_member(interaction.guild, o["user_id"])
+            owner_names.append(member.display_name if member else f"User {o['user_id']}")
+
+        team_list = ", ".join([t["team_name"] for t in teams]) if teams else "None"
+
+        output.append(
+            f"**{conf}**\n"
+            f"Owners: {', '.join(owner_names)}\n"
+            f"Teams: {team_list}\n"
+        )
+
+    await interaction.response.send_message("\n".join(output), ephemeral=False)
+
+
+# ------------------------------------------------------------
+# /available_teams — Show all teams not yet drafted
+# ------------------------------------------------------------
+@bot.tree.command(name="available_teams", description="View all teams not yet drafted into any conference.")
+async def available_teams(interaction: discord.Interaction):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message("There is no active draft.", ephemeral=True)
+        return
+
+    draft_id = draft["id"]
+
+    taken = set()
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT team_name
+        FROM conference_picks
+        WHERE draft_id = ?
+    """, (draft_id,))
+    for row in cur.fetchall():
+        taken.add(row["team_name"])
+    conn.close()
+
+    available = [team["school"] for team in TEAMS if team["school"] not in taken]
+
+    formatted = "\n".join(f"- {t}" for t in available)
+
+    await interaction.response.send_message(
+        f"**Available Teams ({len(available)}):**\n{formatted}",
+        ephemeral=False
+    )
+
+# ------------------------------------------------------------
+# /my_progress — Show user's assigned team, conference, and draft progress
+# ------------------------------------------------------------
+@bot.tree.command(
+    name="my_progress",
+    description="View your assigned team, your conference, and your draft progress."
+)
+async def my_progress(interaction: discord.Interaction):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft.",
+            ephemeral=True
+        )
+        return
+
+    draft_id = draft["id"]
+    user_id = interaction.user.id
+
+    # ------------------------------------------------------------
+    # 1. Assigned Team
+    # ------------------------------------------------------------
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT team_name
+        FROM assigned_teams
+        WHERE draft_id = ? AND user_id = ?
+    """, (draft_id, user_id))
+    row = cur.fetchone()
+    conn.close()
+
+    assigned_team = row["team_name"] if row else "None"
+
+    # ------------------------------------------------------------
+    # 2. Conference Ownership
+    # ------------------------------------------------------------
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT conference_name
+        FROM conference_assignments
+        WHERE draft_id = ? AND user_id = ?
+    """, (draft_id, user_id))
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        conference_name = None
+    else:
+        conference_name = rows[0]["conference_name"]
+
+    # ------------------------------------------------------------
+    # 3. Draft Progress (teams drafted into user's conference)
+    # ------------------------------------------------------------
+    if conference_name:
+        user_pick_count = await count_user_conference_picks(draft_id, conference_name, user_id)
+        teams = await get_conference_teams(draft_id, conference_name)
+        drafted_by_user = [t["team_name"] for t in teams if t["picked_by_user_id"] == user_id]
+    else:
+        user_pick_count = 0
+        drafted_by_user = []
+
+    picks_remaining = TEAMS_PER_USER - user_pick_count
+
+    # ------------------------------------------------------------
+    # Build Output
+    # ------------------------------------------------------------
+    assigned_text = f"**Assigned Team:** {assigned_team}"
+
+    if conference_name:
+        conference_text = f"**Your Conference:** {conference_name}"
+    else:
+        conference_text = "**Your Conference:** Not yet assigned"
+
+    drafted_text = (
+        "\n".join(f"- {team}" for team in drafted_by_user)
+        if drafted_by_user else "None"
+    )
+
+    await interaction.response.send_message(
+        f"**Your Draft Progress**\n\n"
+        f"{assigned_text}\n"
+        f"{conference_text}\n\n"
+        f"**Teams Drafted ({user_pick_count}/{TEAMS_PER_USER}):**\n"
+        f"{drafted_text}\n\n"
+        f"**Picks Remaining:** {picks_remaining}",
+ephemeral=False
+    )
+# ------------------------------------------------------------
+# /export_conferences — Export full custom conference results
+# ------------------------------------------------------------
+@bot.tree.command(
+    name="export_conferences",
+    description="Export the full list of custom conferences, owners, and drafted teams."
+)
+async def export_conferences(interaction: discord.Interaction):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft.",
+            ephemeral=True
+        )
+        return
+
+    draft_id = draft["id"]
+
+    # Get all conferences that have owners
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT conference_name
+        FROM conference_assignments
+        WHERE draft_id = ?
+        ORDER BY conference_name ASC
+    """, (draft_id,))
+    conferences = [row["conference_name"] for row in cur.fetchall()]
+    conn.close()
+
+    if not conferences:
+        await interaction.response.send_message(
+            "No conferences have been created yet.",
+            ephemeral=True
+        )
+        return
+
+    output_lines = []
+    output_lines.append(f"**Custom Conference Draft Results (Draft #{draft_id})**\n")
+
+    for conf in conferences:
+        owners = await get_conference_owners(draft_id, conf)
+        teams = await get_conference_teams(draft_id, conf)
+
+        # Owners
+        owner_names = []
+        for o in owners:
+            member = await safe_fetch_member(interaction.guild, o["user_id"])
+            owner_names.append(member.display_name if member else f"User {o['user_id']}")
+
+        # Teams
+        if teams:
+            team_list = "\n".join([f"  {t['pick_number']}. {t['team_name']}" for t in teams])
+        else:
+            team_list = "  None"
+
+        output_lines.append(
+            f"**{conf}**\n"
+            f"Owners: {', '.join(owner_names)}\n"
+            f"Teams:\n{team_list}\n"
+        )
+
+    final_output = "\n".join(output_lines)
+
+    await interaction.response.send_message(final_output, ephemeral=False)
 #============================================================
 # SECTION 4 — Health Server + Bot Runner
 #============================================================
