@@ -282,9 +282,9 @@ async def safe_fetch_member(guild, user_id):
         return await guild.fetch_member(user_id)
     except Exception:
         return None
-# ============================================================
+#============================================================
 # SECTION 3 — Slash Commands
-# ============================================================
+#============================================================
 
 @bot.event
 async def on_ready():
@@ -296,9 +296,9 @@ async def on_ready():
     print(f"Bot is ready. Logged in as {bot.user}.")
 
 
-# ------------------------------------------------------------
+#------------------------------------------------------------
 # /start_draft — Admin only
-# ------------------------------------------------------------
+#------------------------------------------------------------
 @bot.tree.command(name="start_draft", description="Start a new draft (Admin only).")
 async def start_draft(interaction: discord.Interaction):
 
@@ -326,7 +326,7 @@ async def start_draft(interaction: discord.Interaction):
     )
 
 
-# ------------------------------------------------------------
+#------------------------------------------------------------
 # /join_draft — Users
 #------------------------------------------------------------
 @bot.tree.command(name="join_draft", description="Join the currently open draft.")
@@ -403,7 +403,7 @@ async def conference_view(interaction: discord.Interaction):
         f"**Available Conferences:**\n{formatted}",
         ephemeral=True
     )
-# ------------------------------------------------------------
+#------------------------------------------------------------
 # /claim_team — User claims a team from a conference
 #------------------------------------------------------------
 @bot.tree.command(name="claim_team", description="Claim a team from a chosen conference.")
@@ -514,9 +514,9 @@ async def pick(interaction: discord.Interaction, team_name: str):
         f"**{interaction.user.display_name}** has selected **{team['school']}**!",
         ephemeral=False
     )
-# ------------------------------------------------------------
+#------------------------------------------------------------
 # /assign_conference — User claims ownership of a conference
-# ------------------------------------------------------------
+#------------------------------------------------------------
 @bot.tree.command(name="assign_conference", description="Claim ownership of a conference (max 2 owners).")
 @app_commands.describe(conference_name="The conference you want to own.")
 async def assign_conference(interaction: discord.Interaction, conference_name: str):
@@ -556,12 +556,104 @@ async def assign_conference(interaction: discord.Interaction, conference_name: s
     )
 
 
-# ------------------------------------------------------------
+#------------------------------------------------------------
 # /draft_team_to_conference — Draft a team into your conference
-# ------------------------------------------------------------
-@bot.tree.command(name="draft_team_to_conference", description="Draft a team into the conference you own.")
-@app_commands.describe(conference_name="Your conference", team_name="Team you want to draft")
-async def draft_team_to_conference(interaction: discord.Interaction, conference_name: str, team_name: str):
+#------------------------------------------------------------
+@bot.tree.command(
+    name="draft_team_to_conference",
+    description="Draft a team into the conference you own."
+)
+@app_commands.describe(
+    conference_name="Your conference",
+    team_name="Team you want to draft"
+)
+async def draft_team_to_conference(
+    interaction: discord.Interaction,
+    conference_name: str,
+    team_name: str
+):
+
+    if not await ensure_guild(interaction):
+        return
+
+    draft = await get_active_draft()
+    if not draft:
+        await interaction.response.send_message(
+            "There is no active draft.",
+            ephemeral=True
+        )
+        return
+
+    draft_id = draft["id"]
+
+    # ------------------------------------------------------------
+    # Validate ownership
+    # ------------------------------------------------------------
+    owners = await get_conference_owners(draft_id, conference_name)
+    owner_ids = [o["user_id"] for o in owners]
+
+    if interaction.user.id not in owner_ids:
+        await interaction.response.send_message(
+            f"You do not own **{conference_name}**.",
+            ephemeral=True
+        )
+        return
+
+    # ------------------------------------------------------------
+    # Validate team exists
+    # ------------------------------------------------------------
+    team = find_team(team_name)
+    if not team:
+        await interaction.response.send_message(
+            "Team not found.",
+            ephemeral=True
+        )
+        return
+
+    # ------------------------------------------------------------
+    # Check if team already drafted anywhere
+    # ------------------------------------------------------------
+    if await is_team_in_any_conference(draft_id, team["school"]):
+        await interaction.response.send_message(
+            f"**{team['school']}** has already been drafted into a conference.",
+            ephemeral=True
+        )
+        return
+
+    # ------------------------------------------------------------
+    # Enforce pick limit per user
+    # ------------------------------------------------------------
+    user_pick_count = await count_user_conference_picks(
+        draft_id,
+        conference_name,
+        interaction.user.id
+    )
+
+    if user_pick_count >= TEAMS_PER_USER:
+        await interaction.response.send_message(
+            f"You have already drafted your limit of **{TEAMS_PER_USER} teams** "
+            f"into **{conference_name}**.",
+            ephemeral=True
+        )
+        return
+
+    # ------------------------------------------------------------
+    # Add team to conference
+    # ------------------------------------------------------------
+    await add_team_to_conference(
+        draft_id,
+        conference_name,
+        team["school"],
+        interaction.user.id
+    )
+
+    await interaction.response.send_message(
+        f"**{team['school']}** has been drafted into **{conference_name}**!",
+        ephemeral=False
+    )
+
+
+
 
     if not await ensure_guild(interaction):
         return
