@@ -651,54 +651,6 @@ async def draft_team_to_conference(
         f"**{team['school']}** has been drafted into **{conference_name}**!",
         ephemeral=False
     )
-
-
-
-
-    if not await ensure_guild(interaction):
-        return
-
-    draft = await get_active_draft()
-    if not draft:
-        await interaction.response.send_message("There is no active draft.", ephemeral=True)
-        return
-
-    draft_id = draft["id"]
-
-    # Validate ownership
-    owners = await get_conference_owners(draft_id, conference_name)
-    owner_ids = [o["user_id"] for o in owners]
-
-    if interaction.user.id not in owner_ids:
-        await interaction.response.send_message(
-            f"You do not own **{conference_name}**.",
-            ephemeral=True
-        )
-        return
-
-    # Validate team exists
-    team = find_team(team_name)
-    if not team:
-        await interaction.response.send_message("Team not found.", ephemeral=True)
-        return
-
-    # Check if team already drafted
-    if await is_team_in_any_conference(draft_id, team["school"]):
-        await interaction.response.send_message(
-            f"**{team['school']}** has already been drafted into a conference.",
-            ephemeral=True
-        )
-        return
-
-    # Add team to conference
-    await add_team_to_conference(draft_id, conference_name, team["school"], interaction.user.id)
-
-    await interaction.response.send_message(
-        f"**{team['school']}** has been drafted into **{conference_name}**!",
-        ephemeral=False
-    )
-
-
 # ------------------------------------------------------------
 # /view_conference — Show owners + drafted teams + available teams
 # ------------------------------------------------------------
