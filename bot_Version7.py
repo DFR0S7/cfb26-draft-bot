@@ -74,16 +74,6 @@ def init_db():
     conn.close()
 
 init_db()
-# Enforce pick limit per user
-    user_pick_count = await count_user_conference_picks(draft_id, conference_name, interaction.user.id)
-
-    if user_pick_count >= TEAMS_PER_USER:
-        await interaction.response.send_message(
-            f"You have already drafted your limit of **{TEAMS_PER_USER} teams** "
-            f"into **{conference_name}**.",
-            ephemeral=True
-        )
-        return
 # -----------------------------
 # Load Teams JSON
 # -----------------------------
