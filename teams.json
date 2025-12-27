@@ -133,3 +133,17 @@
   { "school": "Wisconsin", "conference": null },
   { "school": "Wyoming", "conference": null }
 ]
+
+ [ {"conferences":
+    "SEC",
+    "Big Ten",
+    "Big 12",
+    "ACC",
+    "Pac-12",
+    "AAC",
+    "Mountain West",
+    "Sun Belt",
+    "MAC",
+    "Conference USA",
+    "Independents"
+}]
