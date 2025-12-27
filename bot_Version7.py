@@ -189,3 +189,19 @@ def start_health_server():
         httpd.serve_forever()
     except Exception as e:
         print(f"Health server failed to start: {e}")
+# ------------------------------------------------------------
+# Background keep-alive thread
+# ------------------------------------------------------------
+import threading
+
+def start_background_tasks():
+    thread = threading.Thread(target=start_health_server, daemon=True)
+    thread.start()
+
+
+# ------------------------------------------------------------
+# Start bot
+# ------------------------------------------------------------
+if __name__ == "__main__":
+    start_background_tasks()
+    bot.run(TOKEN)
